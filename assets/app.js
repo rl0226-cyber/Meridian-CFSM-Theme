@@ -21,7 +21,11 @@ const state = {
   pollTimers: [],
   reconnectTimers: [],
   timeoutTimers: [],
-  theme: 'rose',
+  theme: 'romance',
+  themeMenuOpen: false,
+  brandMotionPending: true,
+  detailLoading: false,
+  detailRequestId: 0,
   renderQueued: false,
   hidden: false,
   reconnectStopped: false,
@@ -58,6 +62,9 @@ function readStorage(key) {
 }
 function writeStorage(key, value) {
   try { localStorage.setItem(key, value); } catch { /* private browsing may disable storage */ }
+}
+function removeStorage(key) {
+  try { localStorage.removeItem(key); } catch { /* private browsing may disable storage */ }
 }
 function getToken() {
   return readStorage('jwt_token') || '';
@@ -164,6 +171,7 @@ function siteTitle() {
   return state.contexts.map((ctx) => ctx.config?.site_title).find((title) => title && String(title).trim()) || 'Server monitor';
 }
 function renderHeader() {
+  const focusedChoice = document.activeElement?.closest('#theme-menu')?.dataset.themeChoice || '';
   const title = siteTitle();
   const detail = state.route.type === 'detail';
   const openState = window.WebSocket?.OPEN || 1;
@@ -172,16 +180,24 @@ function renderHeader() {
   const mode = live ? 'Live' : isPolling ? 'Polling' : state.contexts.length ? 'Connecting' : 'Offline';
   header.innerHTML = `
     <a class="brand" href="#/" aria-label="${esc(title)} overview">
-      <span class="brand-mark" aria-hidden="true"><i></i></span>
+      <span class="brand-mark ${state.brandMotionPending ? 'mark-enter' : ''}" aria-hidden="true"><img class="mark mark-romance" src="assets/mark-romance.svg" alt=""><img class="mark mark-umbrella" src="assets/mark-umbrella.svg" alt=""></span>
       <span class="brand-copy"><span class="brand-name">${esc(title)}</span><span class="brand-kicker">CFSM · INFRASTRUCTURE</span></span>
     </a>
     <div class="top-clock" aria-label="Current time"><span id="clock-time" class="clock-time">--:--:--</span><span id="clock-date" class="clock-date"><span>—</span><span>—</span></span></div>
     <div class="header-actions">
       ${!detail ? `<nav class="nav" aria-label="Main navigation"><a href="#/" aria-current="page">Overview</a><a href="#server-list">Nodes</a></nav>` : `<a class="back-link" href="#/">← Overview</a>`}
       <span class="live-pill ${live ? '' : 'stale'}"><i class="live-dot"></i><span>${mode}</span></span>
-      <button class="header-button icon" type="button" data-action="theme-toggle" aria-label="Switch light or night theme" title="Toggle theme">${state.theme === 'night' ? '☾' : '☼'}</button>
+      <div class="tone-control">
+        <button class="header-button icon tone-button" type="button" data-action="theme-menu-toggle" aria-label="Choose visual theme" aria-haspopup="menu" aria-expanded="${state.themeMenuOpen}" title="Appearance options"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.25a8.75 8.75 0 1 0 0 17.5h1.1a1.8 1.8 0 0 0 1.38-2.96 1.65 1.65 0 0 1 1.28-2.69h1.17a4.82 4.82 0 0 0 4.82-4.82c0-3.88-4.37-7.03-9.75-7.03Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="10.5" cy="7.5" r=".8"/><circle cx="15" cy="7.5" r=".8"/></svg></button>
+        <div class="tone-pop" id="theme-menu" role="menu" aria-label="Visual theme" ${state.themeMenuOpen ? '' : 'hidden'}>
+          <button type="button" role="menuitemradio" data-action="theme-choice" data-theme-choice="romance" aria-checked="${state.theme === 'romance'}"><i class="tone-swatch romance" aria-hidden="true"></i>Romance</button>
+          <button type="button" role="menuitemradio" data-action="theme-choice" data-theme-choice="umbrella" aria-checked="${state.theme === 'umbrella'}"><i class="tone-swatch umbrella" aria-hidden="true"></i>Umbrella</button>
+        </div>
+      </div>
       <a class="header-button admin-link" href="${esc(adminHref())}" title="Open the CFSM built-in admin panel">Admin ↗</a>
     </div>`;
+  state.brandMotionPending = false;
+  if (focusedChoice && state.themeMenuOpen) requestAnimationFrame(() => header.querySelector(`[data-theme-choice="${focusedChoice}"]`)?.focus({ preventScroll: true }));
   document.title = `${title} · CF Server Monitor`;
   const primary = state.contexts.find((ctx) => ctx.config?.version);
   if (primary) poweredLink.title = `Powered by CF-Server-Monitor · ${primary.config.version}`;
@@ -197,13 +213,24 @@ function updateClock() {
   const get = (type) => parts.find((part) => part.type === type)?.value || '';
   date.innerHTML = `<span>${esc(`${get('year')}/${get('month')}/${get('day')}`)}</span><span>${esc(get('weekday'))}</span>`;
 }
+function readThemePreference() {
+  const stored = readStorage('meridian.site.tone');
+  if (stored === 'romance' || stored === 'umbrella') return stored;
+  return readStorage('cfsm-theme-tone') === 'night' ? 'umbrella' : 'romance';
+}
 function setTheme(theme) {
-  state.theme = theme === 'night' ? 'night' : 'rose';
+  state.theme = theme === 'umbrella' ? 'umbrella' : 'romance';
   document.documentElement.dataset.theme = state.theme;
-  try { localStorage.setItem('cfsm-theme-tone', state.theme); } catch { /* optional */ }
+  const themeColor = $('meta[name="theme-color"]');
+  if (themeColor) themeColor.content = state.theme === 'umbrella' ? '#0a0a0b' : '#fbf0f2';
+  const themeIcon = $('link[rel="icon"][data-umbrella]');
+  if (themeIcon) themeIcon.href = themeIcon.getAttribute(state.theme === 'umbrella' ? 'data-umbrella' : 'data-romance');
+  if (state.theme === 'umbrella') writeStorage('meridian.site.tone', 'umbrella');
+  else removeStorage('meridian.site.tone');
+  removeStorage('cfsm-theme-tone');
+  state.brandMotionPending = true;
   renderHeader();
 }
-function themeToggle() { setTheme(state.theme === 'night' ? 'rose' : 'night'); }
 
 async function loadConfig(ctx) {
   try {
@@ -292,7 +319,7 @@ function renderRegions(servers) {
 }
 function svgOrbit() {
   return `<svg class="orbit-art" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-    <defs><radialGradient id="orbGlow"><stop offset="0" stop-color="#e8a1b8" stop-opacity=".19"/><stop offset=".62" stop-color="#c13a66" stop-opacity=".035"/><stop offset="1" stop-color="#c13a66" stop-opacity="0"/></radialGradient></defs>
+    <defs><radialGradient id="orbGlow"><stop offset="0" stop-color="var(--rose)" stop-opacity=".19"/><stop offset=".62" stop-color="var(--rose)" stop-opacity=".035"/><stop offset="1" stop-color="var(--rose)" stop-opacity="0"/></radialGradient></defs>
     <g class="orbit-shell" fill="none" stroke="currentColor" stroke-width="1">
       <circle cx="320" cy="175" r="122" opacity=".11"/><ellipse cx="320" cy="175" rx="180" ry="76" transform="rotate(-22 320 175)" opacity=".13"/>
       <ellipse cx="320" cy="175" rx="206" ry="112" transform="rotate(18 320 175)" opacity=".09"/>
@@ -301,8 +328,8 @@ function svgOrbit() {
     </g>
     <circle cx="320" cy="175" r="116" fill="url(#orbGlow)"/>
     <g fill="currentColor" opacity=".85"><circle cx="185" cy="105" r="2.7"/><circle cx="462" cy="123" r="2.3"/><circle cx="483" cy="222" r="2.8"/><circle cx="214" cy="262" r="2"/><circle cx="352" cy="47" r="2.1"/><circle cx="302" cy="308" r="2.4"/><circle cx="117" cy="186" r="1.8"/><circle cx="531" cy="168" r="1.7"/></g>
-    <g fill="none" stroke="#c13a66" stroke-width="1.2" opacity=".34"><path d="M185 105Q313 30 462 123"/><path d="M214 262Q354 305 483 222"/><path d="M117 186Q313 109 531 168"/></g>
-    <g fill="#fffafb" stroke="#c13a66" stroke-width="1.4"><circle cx="185" cy="105" r="4"/><circle cx="462" cy="123" r="4"/><circle cx="483" cy="222" r="4"/><circle cx="214" cy="262" r="4"/></g>
+    <g fill="none" stroke="var(--rose)" stroke-width="1.2" opacity=".34"><path d="M185 105Q313 30 462 123"/><path d="M214 262Q354 305 483 222"/><path d="M117 186Q313 109 531 168"/></g>
+    <g fill="var(--surface-solid)" stroke="var(--rose)" stroke-width="1.4"><circle cx="185" cy="105" r="4"/><circle cx="462" cy="123" r="4"/><circle cx="483" cy="222" r="4"/><circle cx="214" cy="262" r="4"/></g>
   </svg>`;
 }
 function renderFlowChart() {
@@ -465,8 +492,9 @@ function renderDetail() {
   const server = state.detail;
   const ctx = state.detailContext;
   if (!server) {
-    const error = ctx?.detailError || 'No server was found for this ID.';
-    main.innerHTML = `${statusBannerFor(ctx)}<section class="detail-page"><a class="back-link" href="#/">← Back to overview</a><div class="notice error" style="margin-top:18px">${esc(error)}</div><p><a class="gate-link" href="${esc(adminHref(ctx))}">Open CFSM admin ↗</a></p></section>`;
+    const error = state.detailLoading ? 'Loading node details…' : ctx?.detailError || 'No server was found for this ID.';
+    const feedback = state.detailLoading ? `<div class="loading-state"><span class="loader"></span><span>${esc(error)}</span></div>` : `<div class="notice error" style="margin-top:18px">${esc(error)}</div>`;
+    main.innerHTML = `${statusBannerFor(ctx)}<section class="detail-page"><a class="back-link" href="#/">← Back to overview</a>${feedback}<p><a class="gate-link" href="${esc(adminHref(ctx))}">Open CFSM admin ↗</a></p></section>`;
     return;
   }
   const online = server._online;
@@ -491,7 +519,7 @@ function renderDetail() {
       ${detailMetric('DISK', disk == null ? '—' : `${disk.toFixed(1)}%`, `${mib(server.disk_used)} / ${mib(server.disk_total)}`, disk)}
       ${detailMetric('NETWORK', net, `Processes ${server.processes ?? '—'} · TCP ${server.tcp_conn ?? '—'} · UDP ${server.udp_conn ?? '—'}`)}
     </div>
-    <div class="detail-columns"><section class="history-panel"><div class="panel-head"><h2 class="panel-title">Metrics history</h2><span class="panel-meta">last 24 hours · when available</span></div><div class="history-legend"><span><i class="legend-dot"></i>CPU</span><span><i class="legend-dot ram"></i>Memory</span><span><i class="legend-dot disk"></i>Disk</span></div>${historyGraph(state.history)}</section>
+    <div class="detail-columns"><section class="history-panel"><div class="panel-head"><h2 class="panel-title">Metrics history</h2><span class="panel-meta">last 24 hours · when available</span></div>${ctx?.historyError ? `<div class="notice error"><span>${esc(ctx.historyError)}</span><button data-action="retry-history">Retry</button></div>` : ''}<div class="history-legend"><span><i class="legend-dot"></i>CPU</span><span><i class="legend-dot ram"></i>Memory</span><span><i class="legend-dot disk"></i>Disk</span></div>${ctx?.historyError ? '' : historyGraph(state.history)}</section>
       <section class="system-panel"><div class="panel-head"><h2 class="panel-title">System information</h2><span class="panel-meta">${esc(server._apiBase || '')}</span></div><div class="system-grid">${info.map(([label, value]) => `<div class="system-item"><span class="system-label">${esc(label)}</span><span class="system-value">${esc(value)}</span></div>`).join('')}</div></section>
     </div>
   </section>`;
@@ -540,8 +568,9 @@ async function mountTurnstile(ctx, elementId) {
         try {
           const fresh = await request(ctx, '/api/config', { turnstileToken: token });
           ctx.config = fresh || ctx.config;
-          ctx.verified = fresh?.turnstile_verified || token;
-          if (fresh?.turnstile_verified) saveVerified(ctx.base, fresh.turnstile_verified);
+          ctx.verified = fresh?.turnstile_verified || '';
+          if (!ctx.verified) throw new ApiError(403, 'The Worker did not return a reusable Turnstile verification credential.');
+          saveVerified(ctx.base, ctx.verified);
           if (state.route.type === 'detail') await loadDetail(state.route);
           else await loadServers(ctx);
           renderGateCards();
@@ -772,8 +801,19 @@ function startPolling(ctx) {
         const next = normalizeServer(data, ctx);
         mergeUpdate(old, next);
         state.detail = old;
+        ctx.detailError = '';
         render();
-      } catch { /* keep last known detail visible */ }
+      } catch (error) {
+        ctx.detailError = error.message;
+        ctx.detailStatus = error.status || 0;
+        if (error.status === 403 && ctx.config?.turnstile_enabled) {
+          ctx.verified = '';
+          ctx.dataLoaded = false;
+          clearVerified(ctx.base);
+          renderGateCards();
+        }
+        render();
+      }
     } else if (state.route.type === 'home') {
       await loadServers(ctx);
       state.servers = getServers();
@@ -799,9 +839,11 @@ function scheduleRender() {
   requestAnimationFrame(() => { state.renderQueued = false; render(); });
 }
 async function loadDetail(route) {
+  const requestId = ++state.detailRequestId;
   closeLive();
   state.detail = null;
   state.history = [];
+  state.detailLoading = true;
   state.detailContext = null;
   state.route = route;
   renderHeader();
@@ -812,15 +854,20 @@ async function loadDetail(route) {
     if (!ctx.config || ctx.configError) continue;
     try {
       const data = await request(ctx, `/api/server?id=${encodeURIComponent(route.id)}`);
+      if (requestId !== state.detailRequestId || state.route.type !== 'detail' || state.route.id !== route.id) return;
       if (!data || !data.id) continue;
       state.detailContext = ctx;
       state.detail = normalizeServer(data, ctx);
       ctx.detailError = '';
+      ctx.historyError = '';
       render();
-      loadHistory(ctx, route.id);
+      void loadHistory(ctx, route.id);
       if (document.visibilityState === 'visible') connectSocket(ctx, String(route.id));
+      state.detailLoading = false;
       return;
     } catch (error) {
+      if (requestId !== state.detailRequestId || state.route.type !== 'detail' || state.route.id !== route.id) return;
+      state.detailContext = ctx;
       ctx.detailError = error.message;
       ctx.detailStatus = error.status || 0;
       if (error.status === 403 && ctx.config?.turnstile_enabled) {
@@ -833,16 +880,29 @@ async function loadDetail(route) {
       if (error.status === 401) break;
     }
   }
+  if (!state.detailContext) {
+    const failed = state.contexts.find((ctx) => ctx.configError);
+    if (failed) {
+      state.detailContext = failed;
+      failed.detailError = failed.configError;
+    }
+  }
+  state.detailLoading = false;
   render();
 }
 async function loadHistory(ctx, id) {
   try {
     const rows = await request(ctx, `/api/history/all?id=${encodeURIComponent(id)}&hours=24`);
+    if (state.route.type !== 'detail' || state.route.id !== String(id) || state.detailContext !== ctx) return;
     state.history = Array.isArray(rows) ? rows : [];
-  } catch {
+    ctx.historyError = '';
+  } catch (error) {
+    if (state.route.type !== 'detail' || state.route.id !== String(id) || state.detailContext !== ctx) return;
     state.history = [];
+    ctx.historyError = error.message;
+    ctx.historyStatus = error.status || 0;
   }
-  if (state.route.type === 'detail' && state.route.id === String(id)) render();
+  if (state.route.type === 'detail' && state.route.id === String(id) && state.detailContext === ctx) render();
 }
 async function handleRoute() {
   const route = readRoute();
@@ -851,6 +911,7 @@ async function handleRoute() {
     await loadDetail(route);
     return;
   }
+  state.detailRequestId += 1;
   state.route = { type: 'home', id: '' };
   state.detail = null;
   state.detailContext = null;
@@ -896,15 +957,38 @@ function retryContext(base, turnstile = false) {
 function exportCurrentAdminPath(ctx) { return adminHref(ctx); }
 function onClick(event) {
   const actionEl = event.target.closest('[data-action]');
+  if (state.themeMenuOpen && !event.target.closest('.tone-control')) {
+    state.themeMenuOpen = false;
+    renderHeader();
+  }
   if (!actionEl) return;
   const action = actionEl.dataset.action;
-  if (action === 'theme-toggle') themeToggle();
+  if (action === 'theme-menu-toggle') {
+    state.themeMenuOpen = !state.themeMenuOpen;
+    renderHeader();
+    if (state.themeMenuOpen) header.querySelector(`[data-theme-choice="${state.theme}"]`)?.focus({ preventScroll: true });
+    else header.querySelector('[data-action="theme-menu-toggle"]')?.focus({ preventScroll: true });
+  } else if (action === 'theme-choice') {
+    state.themeMenuOpen = false;
+    setTheme(actionEl.dataset.themeChoice);
+    header.querySelector('[data-action="theme-menu-toggle"]')?.focus({ preventScroll: true });
+  } else if (action === 'retry-history') {
+    const ctx = state.detailContext;
+    if (ctx && state.detail) void loadHistory(ctx, state.detail.id);
+  }
   else if (action === 'open-server') {
     const id = actionEl.dataset.id;
     if (id) window.location.hash = `#/server/${escapeId(id)}`;
   } else if (action === 'retry-base') retryContext(actionEl.dataset.base);
   else if (action === 'retry-turnstile') retryContext(actionEl.dataset.base, true);
   else if (action === 'reload-current') handleRoute();
+}
+function onKeyDown(event) {
+  if (event.key === 'Escape' && state.themeMenuOpen) {
+    state.themeMenuOpen = false;
+    renderHeader();
+    header.querySelector('[data-action="theme-menu-toggle"]')?.focus({ preventScroll: true });
+  }
 }
 function onInput(event) {
   if (event.target.id === 'server-search') {
@@ -922,17 +1006,26 @@ function onChange(event) {
 }
 async function refreshVisibleView() {
   if (state.route.type === 'detail' && state.detailContext && state.detail) {
+    const ctx = state.detailContext;
     try {
-      const ctx = state.detailContext;
-      const [data, history] = await Promise.all([
-        request(ctx, `/api/server?id=${encodeURIComponent(state.detail.id)}`),
-        request(ctx, `/api/history/all?id=${encodeURIComponent(state.detail.id)}&hours=24`).catch(() => [])
-      ]);
+      const data = await request(ctx, `/api/server?id=${encodeURIComponent(state.detail.id)}`);
       state.detail = normalizeServer(data, ctx);
-      state.history = Array.isArray(history) ? history : [];
+      await loadHistory(ctx, state.detail.id);
+      ctx.detailError = '';
       render();
       connectSocket(ctx, String(state.detail.id));
-    } catch { startPolling(state.detailContext); }
+    } catch (error) {
+      ctx.detailError = error.message;
+      ctx.detailStatus = error.status || 0;
+      if (error.status === 403 && ctx.config?.turnstile_enabled) {
+        ctx.verified = '';
+        ctx.dataLoaded = false;
+        clearVerified(ctx.base);
+        renderGateCards();
+      }
+      render();
+      startPolling(ctx);
+    }
   } else if (state.route.type === 'home') {
     await loadAllServers();
   }
@@ -947,21 +1040,31 @@ function onVisibilityChange() {
   }
 }
 async function boot() {
-  const storedTheme = readStorage('cfsm-theme-tone');
-  state.theme = storedTheme === 'night' ? 'night' : 'rose';
+  const initialRoute = readRoute();
+  state.route = initialRoute;
+  state.theme = readThemePreference();
   document.documentElement.dataset.theme = state.theme;
+  const themeColor = $('meta[name="theme-color"]');
+  if (themeColor) themeColor.content = state.theme === 'umbrella' ? '#0a0a0b' : '#fbf0f2';
+  const themeIcon = $('link[rel="icon"][data-umbrella]');
+  if (themeIcon) themeIcon.href = themeIcon.getAttribute(state.theme === 'umbrella' ? 'data-umbrella' : 'data-romance');
+  if (state.theme === 'umbrella') writeStorage('meridian.site.tone', 'umbrella');
+  else removeStorage('meridian.site.tone');
+  removeStorage('cfsm-theme-tone');
   const bases = getApiBases();
   state.contexts = bases.map((base) => ({ base, config: null, configError: '', configStatus: 0, dataError: '', dataStatus: 0, servers: [], verified: '' }));
   await Promise.all(state.contexts.map((ctx) => loadConfig(ctx)));
   renderHeader();
-  for (const ctx of state.contexts) {
-    if (ctx.config?.turnstile_enabled && !ctx.verified) continue;
-    if (!ctx.configError) await loadServers(ctx);
+  renderGateCards();
+  if (initialRoute.type === 'home') {
+    for (const ctx of state.contexts) {
+      if (ctx.config?.turnstile_enabled && !ctx.verified) continue;
+      if (!ctx.configError) await loadServers(ctx);
+    }
   }
   state.servers = getServers();
   state.serversLoaded = state.contexts.every((ctx) => ctx.dataLoaded || ctx.configError || (ctx.config?.turnstile_enabled && !ctx.verified));
   state.contexts.forEach((ctx) => { ctx.initialSnapshot = true; });
-  renderGateCards();
   state.flow = [];
   appendFlowSample(true);
   render();
@@ -970,6 +1073,7 @@ async function boot() {
   document.addEventListener('click', onClick);
   document.addEventListener('input', onInput);
   document.addEventListener('change', onChange);
+  document.addEventListener('keydown', onKeyDown);
   document.addEventListener('visibilitychange', onVisibilityChange);
   await handleRoute();
 }

@@ -1,10 +1,23 @@
 <!doctype html>
-<html lang="en" data-theme="rose">
+<html lang="en" data-theme="romance">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#fbf0f2">
-  <!-- Leave blank for same-origin deployments; static or cross-origin setups may list Worker origins, separated by commas. -->
+  <link rel="icon" href="assets/mark-romance.svg" type="image/svg+xml" data-romance="assets/mark-romance.svg" data-umbrella="assets/mark-umbrella.svg">
+  <script>
+    try {
+      const saved = localStorage.getItem('meridian.site.tone');
+      const legacy = localStorage.getItem('cfsm-theme-tone');
+      document.documentElement.dataset.theme = saved === 'umbrella' || saved === 'romance'
+        ? saved : legacy === 'night' ? 'umbrella' : 'romance';
+      const themeColor = document.querySelector('meta[name="theme-color"]');
+      if (themeColor) themeColor.content = document.documentElement.dataset.theme === 'umbrella' ? '#0a0a0b' : '#fbf0f2';
+      const themeIcon = document.querySelector('link[rel="icon"][data-umbrella]');
+      if (themeIcon) themeIcon.href = themeIcon.getAttribute(document.documentElement.dataset.theme === 'umbrella' ? 'data-umbrella' : 'data-romance');
+    } catch { /* storage can be disabled */ }
+  </script>
+  <!-- CFSM serves this theme and API through the same Worker origin, so leave apiBase blank. -->
   <meta name="apiBase" content="">
   <title>CF Server Monitor</title>
   <link rel="stylesheet" href="assets/app.css">
