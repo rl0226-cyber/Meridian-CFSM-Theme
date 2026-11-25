@@ -1,0 +1,61 @@
+/* Small, theme-token-aware additions for CFSM-specific states. The visual system remains Meridian's. */
+.cfsm-human-gate {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--scrim, rgba(0, 0, 0, .55));
+  backdrop-filter: blur(10px);
+}
+.cfsm-human-gate[hidden] { display: none; }
+.cfsm-human-card {
+  width: min(100%, 430px);
+  padding: 24px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg, 18px);
+  box-shadow: var(--shadow-pop, 0 24px 80px rgba(0, 0, 0, .28));
+}
+.cfsm-human-card > strong { display: block; font: 600 1.15rem/1.3 var(--font-d, inherit); }
+.cfsm-human-card > p { color: var(--ink-2); line-height: 1.55; }
+#cfsm-human-widget { min-height: 66px; margin: 16px 0 8px; }
+#cfsm-human-cancel {
+  color: var(--ink-2);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 10px);
+  background: transparent;
+  cursor: pointer;
+}
+.cfsm-geo-note {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  width: max-content;
+  max-width: min(86%, 350px);
+  padding: 10px 14px;
+  color: var(--ink-2);
+  text-align: center;
+  font-size: .82rem;
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--page) 35%, transparent);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.g-stage.cfsm-no-geo #globe { opacity: .72; }
+:root.cfsm-no-availability .p-status .avail,
+:root.cfsm-no-availability .p-status #availStrip,
+:root.cfsm-no-availability .p-status .strip-foot,
+#dBody .d-sec.cfsm-unavailable { display: none !important; }
+.hist .seg button[data-v="30d"][hidden] { display: none !important; }
+#cfsm-admin-signin { margin-top: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  .cfsm-human-gate { backdrop-filter: none; }
+}
