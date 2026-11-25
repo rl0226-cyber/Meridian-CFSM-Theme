@@ -290,11 +290,13 @@
     const toBytes = (v) => number(v) * 1024 * 1024;
     const boot = asMs(src.boot_time);
     const load = splitLoad(src.load_avg);
+    const geo = window.CFSMGeo?.resolveRegion(src.region) || null;
     const server = {
       id,
       name: String(src.name || 'Unnamed server'),
-      cc: '',
+      cc: geo?.cc || '',
       city: '',
+      ...(geo ? { loc: geo.loc, approx: true } : {}),
       online,
       since: updated ? Math.floor(updated / 1000) : 0,
       availability: null,
@@ -374,7 +376,7 @@
     const days = daysNone();
     const data = {
       title: primary.site_title || 'CF Server Monitor',
-      about: 'CFSM provides live node metrics and up to 7 days of per-server history when authenticated; historical availability percentages and geographic coordinates are not provided.',
+      about: 'CFSM provides live node metrics and up to 7 days of per-server history when authenticated. Where a node has a recognized country region, its map marker uses an approximate country-center coordinate, not a city-level location.',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       generated_at: Math.floor(Date.now() / 1000),
       days,
@@ -392,7 +394,7 @@
       show: { overview: true, events: false }
     };
     setPageTitle(data.title);
-    setCfsmPresentation();
+    setCfsmPresentation(servers);
     for (const { ctx } of ok) connectSource(ctx);
     return data;
   }
@@ -404,9 +406,12 @@
     if (!old) return;
   }
 
-  function setCfsmPresentation() {
+  function setCfsmPresentation(servers = []) {
+    const hasGeo = servers.some((server) => Array.isArray(server.loc)
+      && server.loc.length >= 2 && server.loc.slice(0, 2).every(finite));
     document.documentElement.dataset.cfsm = 'true';
-    document.documentElement.classList.add('cfsm-no-geo', 'cfsm-no-availability');
+    document.documentElement.classList.toggle('cfsm-no-geo', !hasGeo);
+    document.documentElement.classList.add('cfsm-no-availability');
     const events = document.getElementById('pEvents');
     events?.classList.add('hidden');
     document.querySelectorAll('[data-view="events"]').forEach((el) => el.classList.add('hidden'));
@@ -415,17 +420,27 @@
     if (mapTitle) mapTitle.textContent = 'Live fleet';
     const globeStage = document.querySelector('#pGlobe .g-stage');
     if (globeStage) {
-      globeStage.classList.add('cfsm-no-geo');
-      if (!document.getElementById('cfsm-geo-note')) {
+      globeStage.classList.toggle('cfsm-no-geo', !hasGeo);
+      const existingNote = document.getElementById('cfsm-geo-note');
+      if (hasGeo) {
+        existingNote?.remove();
+      } else if (!existingNote) {
         const note = document.createElement('div');
         note.id = 'cfsm-geo-note';
         note.className = 'cfsm-geo-note';
-        note.textContent = 'CFSM does not provide geographic coordinates';
+        note.textContent = 'No mappable country code is available in CFSM region data';
         globeStage.append(note);
       }
     }
     const mapCredit = document.querySelector('.g-src');
-    if (mapCredit) mapCredit.textContent = 'Geographic coordinates are not provided by CFSM';
+    if (mapCredit) mapCredit.textContent = hasGeo
+      ? 'Natural Earth · approximate country centers inferred from CFSM region'
+      : 'Natural Earth · no mappable country code in CFSM region data';
+    const approxLegend = document.getElementById('lgApprox');
+    const approxLabel = approxLegend && [...approxLegend.childNodes].find((node) => node.nodeType === 3);
+    if (approxLabel) approxLabel.textContent = 'Dashed ring: approximate country center (inferred from region)';
+    const globe = document.getElementById('globe');
+    if (globe && hasGeo) globe.setAttribute('aria-label', 'Globe with approximate country centers inferred from server region codes. Arrow keys go from country to country, Enter opens one, F for full screen');
     const foot = document.getElementById('footText');
     if (foot) foot.textContent = 'Live infrastructure data from CF-Server-Monitor';
     const footerCredit = document.querySelector('.foot > span:last-child');
