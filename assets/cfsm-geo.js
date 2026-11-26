@@ -285,5 +285,23 @@
     return { cc, loc: [lat, lon] };
   }
 
-  window.CFSMGeo = Object.freeze({ countryCodeFromRegion, resolveRegion });
+  function parseCoordinate(value, min, max) {
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= min && number <= max ? number : null;
+  }
+
+  function resolveEgressLocation(server) {
+    if (!server || typeof server !== 'object') return null;
+    const lat = parseCoordinate(server.egress_latitude, -90, 90);
+    const lon = parseCoordinate(server.egress_longitude, -180, 180);
+    if (lat === null || lon === null) return null;
+    const rawCountry = String(server.egress_country ?? '').trim().toUpperCase();
+    const cc = /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : '';
+    const city = String(server.egress_city ?? '').trim();
+    return { cc, city, loc: [lat, lon], approx: true };
+  }
+
+  window.CFSMGeo = Object.freeze({ countryCodeFromRegion, resolveRegion, resolveEgressLocation });
 })();

@@ -290,12 +290,12 @@
     const toBytes = (v) => number(v) * 1024 * 1024;
     const boot = asMs(src.boot_time);
     const load = splitLoad(src.load_avg);
-    const geo = window.CFSMGeo?.resolveRegion(src.region) || null;
+    const geo = window.CFSMGeo?.resolveEgressLocation(src) || null;
     const server = {
       id,
       name: String(src.name || 'Unnamed server'),
       cc: geo?.cc || '',
-      city: '',
+      city: geo?.city || '',
       ...(geo ? { loc: geo.loc, approx: true } : {}),
       online,
       since: updated ? Math.floor(updated / 1000) : 0,
@@ -376,7 +376,7 @@
     const days = daysNone();
     const data = {
       title: primary.site_title || 'CF Server Monitor',
-      about: 'CFSM provides live node metrics and up to 7 days of per-server history when authenticated. Where a node has a recognized country region, its map marker uses an approximate country-center coordinate, not a city-level location.',
+      about: 'Map markers show Cloudflare\'s approximate IP-geolocation for the probe connection egress seen by CFSM. They do not represent the server\'s physical or datacenter location.',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       generated_at: Math.floor(Date.now() / 1000),
       days,
@@ -428,19 +428,19 @@
         const note = document.createElement('div');
         note.id = 'cfsm-geo-note';
         note.className = 'cfsm-geo-note';
-        note.textContent = 'No mappable country code is available in CFSM region data';
+        note.textContent = 'No approximate egress coordinates are available from Cloudflare for this probe';
         globeStage.append(note);
       }
     }
     const mapCredit = document.querySelector('.g-src');
     if (mapCredit) mapCredit.textContent = hasGeo
-      ? 'Natural Earth · approximate country centers inferred from CFSM region'
-      : 'Natural Earth · no mappable country code in CFSM region data';
+      ? 'Natural Earth · approximate probe egress locations from Cloudflare IP geolocation'
+      : 'Natural Earth · no Cloudflare egress coordinates available';
     const approxLegend = document.getElementById('lgApprox');
     const approxLabel = approxLegend && [...approxLegend.childNodes].find((node) => node.nodeType === 3);
-    if (approxLabel) approxLabel.textContent = 'Dashed ring: approximate country center (inferred from region)';
+    if (approxLabel) approxLabel.textContent = 'Dashed ring: approximate probe egress location';
     const globe = document.getElementById('globe');
-    if (globe && hasGeo) globe.setAttribute('aria-label', 'Globe with approximate country centers inferred from server region codes. Arrow keys go from country to country, Enter opens one, F for full screen');
+    if (globe && hasGeo) globe.setAttribute('aria-label', 'Globe with approximate IP-geolocated probe egress points; these are not physical server locations. Arrow keys move between points, Enter opens one, F for full screen');
     const foot = document.getElementById('footText');
     if (foot) foot.textContent = 'Live infrastructure data from CF-Server-Monitor';
     const footerCredit = document.querySelector('.foot > span:last-child');
@@ -786,6 +786,50 @@
     });
   }
 
+  async function loginResponse(init = {}) {
+    let credentials;
+    try {
+      const body = init?.body;
+      credentials = typeof body === 'string' ? JSON.parse(body) : body;
+    } catch {
+      return response({ error: 'Could not read the sign-in details. Please try again.' }, 400);
+    }
+    if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)) {
+      return response({ error: 'Could not read the sign-in details. Please try again.' }, 400);
+    }
+    const username = String(credentials.username || '').trim();
+    const password = String(credentials.password || '');
+    if (!username || !password) return response({ error: 'Enter your username and password.' }, 400);
+
+    const ctx = context(location.origin);
+    const payload = { action: 'login', username, password };
+    const res = await rawRequest(ctx, '/admin/api', {
+      method: 'POST',
+      headers: { 'X-Meridian': '1' },
+      body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    let data = null;
+    let validJson = false;
+    try { if (text) { data = JSON.parse(text); validJson = true; } } catch {}
+    const objectData = data && typeof data === 'object' && !Array.isArray(data);
+    const apiError = objectData ? String(data.error || data.message || '') : '';
+    const explicitlyRejected = objectData
+      && (data.success === false || data.ok === false || data.authenticated === false);
+    if (!res.ok || apiError || explicitlyRejected) {
+      const fallbackMessage = explicitlyRejected
+        ? 'CFSM rejected the sign-in. Check your username and password and try again.'
+        : res.status === 401 ? 'Sign-in failed. Check your username and password and try again.'
+          : `CFSM sign-in failed (HTTP ${res.status}).`;
+      const message = apiError || fallbackMessage;
+      return response({ error: message }, res.ok ? 401 : res.status);
+    }
+    if (!validJson || !objectData) {
+      return response({ error: 'CFSM returned an unexpected sign-in response. Please reload and try again.' }, 502);
+    }
+    return response({ kind: 'admin' });
+  }
+
   function isApiPath(path) { return path.startsWith('/api/'); }
   const originalFetchWrapper = window.fetch;
   window.fetch = async function cfsmFetch(input, init) {
@@ -794,6 +838,7 @@
     catch { return originalFetchWrapper(input, init); }
     if (url.origin !== location.origin || !isApiPath(url.pathname)) return originalFetchWrapper(input, init);
     try {
+      if (url.pathname === '/api/login') return await loginResponse(init);
       if (url.pathname === '/api/status') return await statusResponse();
       if (url.pathname === '/api/meta') return await metaResponse();
       if (url.pathname === '/api/status/live') return response(await livePayload(url));
