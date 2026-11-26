@@ -11,8 +11,8 @@
 <script src="/assets/boot.js"></script>
 <script src="/assets/globe.js" defer></script>
   <script src="/assets/cfsm-geo-v1.0.4.js"></script>
-  <script src="/assets/cfsm-adapter-v1.0.4.js"></script>
-  <script type="module" crossorigin src="/assets/status-v1.0.3.js"></script>
+  <script src="/assets/cfsm-adapter-v1.0.5.js"></script>
+  <script type="module" crossorigin src="/assets/status-v1.0.5.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/turnstile-BkmN-LmI.js">
   <link rel="stylesheet" crossorigin href="/assets/turnstile-BxbI5mKJ.css">
   <link rel="stylesheet" crossorigin href="/assets/status-ChBL1Crt.css">
@@ -139,9 +139,9 @@
             <p class="about hidden" id="about"></p>
             <div class="avail">
               <div class="a-fig"><span class="a-num" id="avail24">—</span><span class="a-lab">Available, last 24 h</span></div>
-              <div class="a-fig"><span class="a-num" id="avail30">—</span><span class="a-lab">Available, last 30 days</span></div>
+              <div class="a-fig"><span class="a-num" id="avail30">—</span><span class="a-lab">Available, last 7 days</span></div>
             </div>
-            <div class="strip" id="availStrip" role="img" aria-label="Availability of all servers for each of the last 30 days"></div>
+            <div class="strip" id="availStrip" role="img" aria-label="Availability of all servers for each of the last 7 days"></div>
             <div class="strip-foot"><span id="stripFrom"></span><span>Today</span></div>
             <div class="attn" id="attn" aria-live="polite"></div>
           </div>
@@ -223,10 +223,10 @@
 
   <!-- ================================================================ events -->
   <section class="view page" id="v-events" data-view="events" aria-labelledby="hEventsPage" hidden>
-    <header class="page-h"><h1 id="hEventsPage">Events</h1><p>Outages and recoveries of the last 30 days, and what comes next.</p></header>
+    <header class="page-h"><h1 id="hEventsPage">Events</h1><p>Outages and recoveries from the last 7 days. History starts when monitoring is enabled; earlier outages are not backfilled.</p></header>
     <p class="sup-note hidden" id="evPrivate" role="note"></p>
     <div class="two">
-      <section class="panel"><header class="ph"><h2>Last 30 days</h2><span class="pm" id="feedMeta"></span></header><div class="pb"><div class="feed" id="feed"></div></div></section>
+      <section class="panel"><header class="ph"><h2>Last 7 days</h2><span class="pm" id="feedMeta"></span></header><div class="pb"><div class="feed" id="feed"></div></div></section>
       <section class="panel"><header class="ph"><h2>Coming up</h2></header><div class="pb"><div class="feed" id="upcoming"></div></div></section>
     </div>
   </section>
