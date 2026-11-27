@@ -5,10 +5,15 @@ const vm = require('node:vm');
 let backendStatus = 200;
 let backendResponse = null;
 let backendRequest = null;
+const redirects = [];
 const context = {
   window: {},
   document: { querySelector: () => null, addEventListener() {} },
-  location: { origin: 'https://example.test', href: 'https://example.test/' },
+  location: {
+    origin: 'https://example.test',
+    href: 'https://example.test/',
+    replace: (url) => redirects.push(url)
+  },
   localStorage: { getItem: () => '', setItem() {}, removeItem() {} },
   fetch: async (input, init) => {
     backendRequest = { input: String(input), init };
@@ -20,8 +25,8 @@ context.window = context;
 context.addEventListener = () => {};
 context.removeEventListener = () => {};
 const index = fs.readFileSync('index.html', 'utf8');
-assert.match(index, /src="\/assets\/cfsm-adapter-v1\.0\.7\.js"/);
-const adapter = fs.readFileSync('assets/cfsm-adapter-v1.0.7.js', 'utf8');
+assert.match(index, /src="\/assets\/cfsm-adapter-v1\.0\.8\.js"/);
+const adapter = fs.readFileSync('assets/cfsm-adapter-v1.0.8.js', 'utf8');
 assert.doesNotMatch(adapter, /Map markers show Cloudflare/);
 vm.runInNewContext(adapter, context);
 const { calculateAvailability, buildStatusHistory } = context.CFSMStatusHistory;
@@ -57,6 +62,8 @@ async function testLoginResponse() {
   assert.deepEqual(JSON.parse(backendRequest.init.body), {
     action: 'login', username: 'admin', password: 'test-password'
   });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(redirects, ['https://example.test/admin#/admin']);
 
   backendStatus = 401;
   backendResponse = { success: false, message: 'invalidCredentials' };
@@ -66,10 +73,11 @@ async function testLoginResponse() {
   });
   assert.equal(rejected.status, 401);
   assert.deepEqual(await rejected.json(), { error: 'invalidCredentials' });
+  assert.deepEqual(redirects, ['https://example.test/admin#/admin']);
 }
 
 testLoginResponse().then(() => {
-  console.log('status history and v1.0.7 login adapter tests: ok');
+  console.log('status history and v1.0.8 login redirect tests: ok');
 }).catch((error) => {
   console.error(error);
   process.exitCode = 1;
